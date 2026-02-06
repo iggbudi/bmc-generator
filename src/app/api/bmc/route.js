@@ -24,16 +24,29 @@ export async function POST(request) {
   }
 
   const idea = body?.idea?.trim();
+  const language = body?.language === 'en' ? 'en' : 'id';
   if (!idea) {
     return NextResponse.json(
-      { error: 'Mohon kirimkan deskripsi ide bisnis.' },
+      {
+        error:
+          language === 'en'
+            ? 'Please provide a business idea description.'
+            : 'Mohon kirimkan deskripsi ide bisnis.',
+      },
       { status: 400 }
     );
   }
 
+  const promptLanguageInstruction =
+    language === 'en'
+      ? 'Write all content in English.'
+      : 'Tulis seluruh konten dalam Bahasa Indonesia.';
+
   const prompt = `Berdasarkan deskripsi bisnis berikut, buatkan Business Model Canvas yang lengkap dan detail dalam format JSON.
 
 Deskripsi Bisnis: ${idea}
+
+${promptLanguageInstruction}
 
 PENTING: Respons Anda HARUS HANYA berupa satu objek JSON yang valid. JANGAN menambahkan teks apa pun di luar struktur JSON. JANGAN gunakan backticks atau markdown.
 
