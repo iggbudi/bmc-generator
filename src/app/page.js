@@ -164,13 +164,28 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
     if (!bmcContainerRef.current) return;
 
     try {
-      const canvas = await html2canvas(bmcContainerRef.current, {
+      // Clone the container to avoid modifying the original
+      const clonedContainer = bmcContainerRef.current.cloneNode(true);
+      
+      // Create a temporary container to hold the clone
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      tempContainer.style.top = '-9999px';
+      tempContainer.appendChild(clonedContainer);
+      document.body.appendChild(tempContainer);
+
+      const canvas = await html2canvas(clonedContainer, {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
         allowTaint: true,
         logging: false,
+        foreignObjectRendering: true,
       });
+
+      // Remove temporary container
+      document.body.removeChild(tempContainer);
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'mm', 'a4');
