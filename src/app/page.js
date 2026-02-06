@@ -167,11 +167,31 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
       // Clone the container to avoid modifying the original
       const clonedContainer = bmcContainerRef.current.cloneNode(true);
       
+      // Remove problematic CSS that uses oklab color function
+      const style = document.createElement('style');
+      style.textContent = `
+        * {
+          color: inherit !important;
+          background-color: inherit !important;
+          border-color: inherit !important;
+        }
+        .bg-rose-50 { background-color: #fdf2f4 !important; }
+        .bg-rose-100 { background-color: #fee2e2 !important; }
+        .bg-rose-200 { background-color: #fecaca !important; }
+        .text-rose-100 { color: #ffe4e6 !important; }
+        .text-rose-700 { color: #be123c !important; }
+        .border-rose-100 { border-color: #ffe4e6 !important; }
+        .border-rose-200 { border-color: #fecaca !important; }
+        .border-rose-500 { border-color: #f43f5e !important; }
+      `;
+      clonedContainer.appendChild(style);
+      
       // Create a temporary container to hold the clone
       const tempContainer = document.createElement('div');
       tempContainer.style.position = 'absolute';
       tempContainer.style.left = '-9999px';
       tempContainer.style.top = '-9999px';
+      tempContainer.style.width = bmcContainerRef.current.offsetWidth + 'px';
       tempContainer.appendChild(clonedContainer);
       document.body.appendChild(tempContainer);
 
@@ -181,7 +201,8 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
         useCORS: true,
         allowTaint: true,
         logging: false,
-        foreignObjectRendering: true,
+        foreignObjectRendering: false,
+        imageTimeout: 0,
       });
 
       // Remove temporary container
