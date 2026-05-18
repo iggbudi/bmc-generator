@@ -1,8 +1,8 @@
 'use client';
 
 import Image from 'next/image';
-import { useRef, useState } from 'react';
-import { Sparkles, Loader2, Download, RefreshCw, HelpCircle, Globe } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Sparkles, Loader2, Download, RefreshCw, HelpCircle, Globe, Cpu } from 'lucide-react';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import Papa from 'papaparse';
@@ -20,7 +20,13 @@ const initialState = {
   revenueStreams: [],
 };
 
-
+// Fallback list jika API models gagal dipanggil
+const FALLBACK_FREE_MODELS = [
+  { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free' },
+  { id: 'minimax-m2.5-free', name: 'MiniMax M2.5 Free' },
+  { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super Free' },
+  { id: 'big-pickle', name: 'Big Pickle (Free)' },
+];
 
 export default function Home() {
   const [businessIdea, setBusinessIdea] = useState('');
@@ -30,9 +36,42 @@ export default function Home() {
   const [downloadFormat, setDownloadFormat] = useState('txt');
   const [showTooltip, setShowTooltip] = useState(null);
   const [language, setLanguage] = useState('id');
+  const [freeModels, setFreeModels] = useState(FALLBACK_FREE_MODELS);
+  const [selectedModel, setSelectedModel] = useState(FALLBACK_FREE_MODELS[0].id);
+  const [modelsLoading, setModelsLoading] = useState(true);
   const bmcContainerRef = useRef(null);
 
   const t = (key) => getTranslation(language, key);
+
+  // Fetch daftar model free dari OpenCode Zen saat halaman pertama kali dimuat
+  useEffect(() => {
+    const fetchModels = async () => {
+      setModelsLoading(true);
+      try {
+        const res = await fetch('/api/models');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.models && data.models.length > 0) {
+            // Format nama model: ubah id jadi label yang lebih rapi
+            const formatted = data.models.map((m) => ({
+              id: m.id,
+              name: m.name || m.id
+                .split('-')
+                .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                .join(' '),
+            }));
+            setFreeModels(formatted);
+            setSelectedModel(formatted[0].id);
+          }
+        }
+      } catch {
+        // Tetap pakai fallback list jika fetch gagal
+      } finally {
+        setModelsLoading(false);
+      }
+    };
+    fetchModels();
+  }, []);
 
   const generateBMC = async () => {
     if (!businessIdea.trim()) {
@@ -49,7 +88,7 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ idea: businessIdea, language }),
+        body: JSON.stringify({ idea: businessIdea, language, model: selectedModel }),
       });
 
       const result = await response.json().catch(() => null);
@@ -418,6 +457,48 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
               </div>
             )}
 
+            {/* Model Selector */}
+            <div className="mt-6">
+              <label className="block text-sm font-semibold text-[#5c0b0b] mb-2 flex items-center gap-2">
+                <Cpu className="w-4 h-4" />
+                {language === 'id' ? 'Pilih Model AI (Gratis)' : 'Select AI Model (Free)'}
+              </label>
+              {modelsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  {language === 'id' ? 'Memuat daftar model...' : 'Loading models...'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {freeModels.map((model) => (
+                    <button
+                      key={model.id}
+                      type="button"
+                      onClick={() => setSelectedModel(model.id)}
+                      disabled={loading}
+                      className={`px-4 py-3 rounded-lg border-2 text-sm font-medium text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                        selectedModel === model.id
+                          ? 'border-[#7a1515] bg-[#7a1515]/10 text-[#5c0b0b]'
+                          : 'border-rose-200 bg-white text-gray-700 hover:border-[#7a1515]/50'
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        <span
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            selectedModel === model.id ? 'bg-[#7a1515]' : 'bg-gray-300'
+                          }`}
+                        />
+                        {model.name}
+                      </span>
+                      <span className="text-xs text-green-600 font-semibold mt-1 block ml-4">
+                        ✓ Free
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <button
               onClick={generateBMC}
               disabled={loading}
@@ -443,6 +524,11 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
             <div className="bg-white/95 rounded-xl shadow-lg p-6 border border-rose-100 text-gray-900">
               <h2 className="text-xl font-bold text-[#5c0b0b] mb-2">{t('businessIdea')}</h2>
               <p className="text-gray-700 italic">{businessIdea}</p>
+              <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                <Cpu className="w-3 h-3" />
+                {language === 'id' ? 'Dibuat dengan model:' : 'Generated with model:'}{' '}
+                <span className="font-medium text-[#7a1515]">{selectedModel}</span>
+              </p>
             </div>
 
             {error && (

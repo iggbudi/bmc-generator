@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-const MODEL = 'gpt-4o-mini';
+// OpenCode Zen API — compatible with OpenAI chat completions format
+const ZEN_URL = 'https://opencode.ai/zen/v1/chat/completions';
+const DEFAULT_MODEL = 'deepseek-v4-flash-free';
 
 export async function POST(request) {
-  const openAiKey = process.env.OPENAI_API_KEY;
+  const zenApiKey = process.env.OPENCODE_ZEN_API_KEY;
 
-  if (!openAiKey) {
+  if (!zenApiKey) {
     return NextResponse.json(
-      { error: 'Server belum dikonfigurasi dengan OPENAI_API_KEY' },
+      { error: 'Server belum dikonfigurasi dengan OPENCODE_ZEN_API_KEY' },
       { status: 500 }
     );
   }
@@ -25,6 +26,9 @@ export async function POST(request) {
 
   const idea = body?.idea?.trim();
   const language = body?.language === 'en' ? 'en' : 'id';
+  // Use model from request, fallback to default free model
+  const model = body?.model?.trim() || DEFAULT_MODEL;
+
   if (!idea) {
     return NextResponse.json(
       {
@@ -66,14 +70,14 @@ Format JSON yang harus Anda gunakan:
 Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array harus berisi 3-5 poin yang relevan dan detail.`;
 
   try {
-    const response = await fetch(OPENAI_URL, {
+    const response = await fetch(ZEN_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiKey}`,
+        Authorization: `Bearer ${zenApiKey}`,
       },
       body: JSON.stringify({
-        model: MODEL,
+        model,
         temperature: 0.2,
         max_tokens: 1200,
         response_format: { type: 'json_object' },
@@ -84,7 +88,7 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
     if (!response.ok) {
       const errorText = await response.text();
       return NextResponse.json(
-        { error: 'Gagal menghubungi OpenAI', detail: errorText },
+        { error: 'Gagal menghubungi OpenCode Zen', detail: errorText },
         { status: response.status }
       );
     }
@@ -94,7 +98,7 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
 
     if (!content) {
       return NextResponse.json(
-        { error: 'Format respons OpenAI tidak dikenali.' },
+        { error: 'Format respons OpenCode Zen tidak dikenali.' },
         { status: 500 }
       );
     }
@@ -104,7 +108,7 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
       canvas = JSON.parse(content);
     } catch (err) {
       return NextResponse.json(
-        { error: 'Respons OpenAI bukan JSON yang valid.', detail: err.message },
+        { error: 'Respons bukan JSON yang valid.', detail: err.message },
         { status: 500 }
       );
     }
