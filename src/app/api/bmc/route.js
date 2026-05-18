@@ -55,7 +55,7 @@ async function callOpenAICompat(model, system, user, key) {
     body: JSON.stringify({
       model,
       temperature: 0.3,
-      max_tokens: 2000,
+      max_tokens: 10000,
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -75,7 +75,7 @@ async function callAnthropic(model, system, user, key) {
     },
     body: JSON.stringify({
       model,
-      max_tokens: 2000,
+      max_tokens: 10000,
       system,
       messages: [{ role: 'user', content: user }],
     }),
