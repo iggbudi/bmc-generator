@@ -4,6 +4,43 @@ import { NextResponse } from 'next/server';
 const ZEN_URL = 'https://opencode.ai/zen/v1/chat/completions';
 const DEFAULT_MODEL = 'deepseek-v4-flash-free';
 
+// Model yang support response_format json_object (OpenAI-based)
+const JSON_FORMAT_SUPPORTED_MODELS = ['gpt-', 'minimax'];
+
+function supportsJsonFormat(model) {
+  return JSON_FORMAT_SUPPORTED_MODELS.some((prefix) => model.startsWith(prefix));
+}
+
+// Ekstrak JSON dari teks yang mungkin mengandung markdown atau teks tambahan
+function extractJSON(text) {
+  // Coba parse langsung dulu
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Cari blok JSON di dalam ```json ... ``` atau ``` ... ```
+    const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      try {
+        return JSON.parse(codeBlockMatch[1].trim());
+      } catch {
+        // lanjut ke cara berikutnya
+      }
+    }
+
+    // Cari objek JSON { ... } terluar
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        return JSON.parse(jsonMatch[0]);
+      } catch {
+        // tidak bisa di-parse
+      }
+    }
+
+    return null;
+  }
+}
+
 export async function POST(request) {
   const zenApiKey = process.env.OPENCODE_ZEN_API_KEY;
 
@@ -26,7 +63,6 @@ export async function POST(request) {
 
   const idea = body?.idea?.trim();
   const language = body?.language === 'en' ? 'en' : 'id';
-  // Use model from request, fallback to default free model
   const model = body?.model?.trim() || DEFAULT_MODEL;
 
   if (!idea) {
@@ -69,6 +105,18 @@ Format JSON yang harus Anda gunakan:
 
 Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array harus berisi 3-5 poin yang relevan dan detail.`;
 
+  // Hanya kirim response_format untuk model yang mendukungnya
+  const requestBody = {
+    model,
+    temperature: 0.2,
+    max_tokens: 1200,
+    messages: [{ role: 'user', content: prompt }],
+  };
+
+  if (supportsJsonFormat(model)) {
+    requestBody.response_format = { type: 'json_object' };
+  }
+
   try {
     const response = await fetch(ZEN_URL, {
       method: 'POST',
@@ -76,13 +124,7 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
         'Content-Type': 'application/json',
         Authorization: `Bearer ${zenApiKey}`,
       },
-      body: JSON.stringify({
-        model,
-        temperature: 0.2,
-        max_tokens: 1200,
-        response_format: { type: 'json_object' },
-        messages: [{ role: 'user', content: prompt }],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -103,12 +145,11 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
       );
     }
 
-    let canvas;
-    try {
-      canvas = JSON.parse(content);
-    } catch (err) {
+    const canvas = extractJSON(content);
+
+    if (!canvas) {
       return NextResponse.json(
-        { error: 'Respons bukan JSON yang valid.', detail: err.message },
+        { error: 'Respons bukan JSON yang valid.', detail: content.slice(0, 200) },
         { status: 500 }
       );
     }
