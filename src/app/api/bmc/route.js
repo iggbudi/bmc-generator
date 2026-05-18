@@ -4,11 +4,34 @@ import { NextResponse } from 'next/server';
 const ZEN_URL = 'https://opencode.ai/zen/v1/chat/completions';
 const DEFAULT_MODEL = 'deepseek-v4-flash-free';
 
-// Model yang support response_format json_object (OpenAI-based)
-const JSON_FORMAT_SUPPORTED_MODELS = ['gpt-', 'minimax'];
+// Ekstrak content text dari berbagai bentuk respons OpenAI-compatible
+function extractContent(data) {
+  // Bentuk standar: choices[0].message.content
+  let content = data?.choices?.[0]?.message?.content;
+  if (typeof content === 'string' && content.trim()) return content.trim();
 
-function supportsJsonFormat(model) {
-  return JSON_FORMAT_SUPPORTED_MODELS.some((prefix) => model.startsWith(prefix));
+  // Beberapa model mengembalikan content sebagai array of parts
+  if (Array.isArray(content)) {
+    const text = content
+      .map((p) => (typeof p === 'string' ? p : p?.text || ''))
+      .join('');
+    if (text.trim()) return text.trim();
+  }
+
+  // Bentuk alternatif: choices[0].text
+  const altText = data?.choices?.[0]?.text;
+  if (typeof altText === 'string' && altText.trim()) return altText.trim();
+
+  // Bentuk alternatif: output_text (responses API format)
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  // Bentuk reasoning models: choices[0].message.reasoning_content
+  const reasoning = data?.choices?.[0]?.message?.reasoning_content;
+  if (typeof reasoning === 'string' && reasoning.trim()) return reasoning.trim();
+
+  return null;
 }
 
 // Ekstrak JSON dari teks yang mungkin mengandung markdown atau teks tambahan
@@ -27,7 +50,7 @@ function extractJSON(text) {
       }
     }
 
-    // Cari objek JSON { ... } terluar
+    // Cari objek JSON { ... } terluar (greedy)
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
@@ -82,40 +105,40 @@ export async function POST(request) {
       ? 'Write all content in English.'
       : 'Tulis seluruh konten dalam Bahasa Indonesia.';
 
-  const prompt = `Berdasarkan deskripsi bisnis berikut, buatkan Business Model Canvas yang lengkap dan detail dalam format JSON.
+  const prompt = `You are an expert business analyst. Generate a Business Model Canvas based on the business description below.
 
-Deskripsi Bisnis: ${idea}
+Business Description: ${idea}
 
 ${promptLanguageInstruction}
 
-PENTING: Respons Anda HARUS HANYA berupa satu objek JSON yang valid. JANGAN menambahkan teks apa pun di luar struktur JSON. JANGAN gunakan backticks atau markdown.
+CRITICAL: Respond with ONLY a valid JSON object. No markdown, no code fences, no explanation text. Start directly with { and end with }.
 
-Format JSON yang harus Anda gunakan:
+Use this exact JSON structure with 3-5 specific items per array:
 {
-  "keyPartners": ["partner 1", "partner 2", "..."],
-  "keyActivities": ["aktivitas 1", "aktivitas 2", "..."],
-  "keyResources": ["sumber daya 1", "sumber daya 2", "..."],
-  "valuePropositions": ["proposisi nilai 1", "proposisi nilai 2", "..."],
-  "customerRelationships": ["hubungan 1", "hubungan 2", "..."],
-  "channels": ["channel 1", "channel 2", "..."],
-  "customerSegments": ["segmen 1", "segmen 2", "..."],
-  "costStructure": ["biaya 1", "biaya 2", "..."],
-  "revenueStreams": ["pendapatan 1", "pendapatan 2", "..."]
-}
+  "keyPartners": ["..."],
+  "keyActivities": ["..."],
+  "keyResources": ["..."],
+  "valuePropositions": ["..."],
+  "customerRelationships": ["..."],
+  "channels": ["..."],
+  "customerSegments": ["..."],
+  "costStructure": ["..."],
+  "revenueStreams": ["..."]
+}`;
 
-Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array harus berisi 3-5 poin yang relevan dan detail.`;
-
-  // Hanya kirim response_format untuk model yang mendukungnya
   const requestBody = {
     model,
-    temperature: 0.2,
-    max_tokens: 1200,
-    messages: [{ role: 'user', content: prompt }],
+    temperature: 0.3,
+    max_tokens: 2000,
+    messages: [
+      {
+        role: 'system',
+        content:
+          'You are a business analyst. Always respond with valid JSON only, no markdown or extra text.',
+      },
+      { role: 'user', content: prompt },
+    ],
   };
-
-  if (supportsJsonFormat(model)) {
-    requestBody.response_format = { type: 'json_object' };
-  }
 
   try {
     const response = await fetch(ZEN_URL, {
@@ -127,20 +150,40 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
       body: JSON.stringify(requestBody),
     });
 
+    const rawText = await response.text();
+
     if (!response.ok) {
-      const errorText = await response.text();
       return NextResponse.json(
-        { error: 'Gagal menghubungi OpenCode Zen', detail: errorText },
+        {
+          error: 'Gagal menghubungi OpenCode Zen',
+          status: response.status,
+          detail: rawText.slice(0, 500),
+        },
         { status: response.status }
       );
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      return NextResponse.json(
+        {
+          error: 'OpenCode Zen mengembalikan respons non-JSON',
+          detail: rawText.slice(0, 500),
+        },
+        { status: 502 }
+      );
+    }
+
+    const content = extractContent(data);
 
     if (!content) {
       return NextResponse.json(
-        { error: 'Format respons OpenCode Zen tidak dikenali.' },
+        {
+          error: 'Format respons OpenCode Zen tidak dikenali.',
+          detail: JSON.stringify(data).slice(0, 500),
+        },
         { status: 500 }
       );
     }
@@ -149,7 +192,10 @@ Berikan analisis yang mendalam dan spesifik untuk setiap elemen. Setiap array ha
 
     if (!canvas) {
       return NextResponse.json(
-        { error: 'Respons bukan JSON yang valid.', detail: content.slice(0, 200) },
+        {
+          error: 'Respons bukan JSON yang valid.',
+          detail: content.slice(0, 500),
+        },
         { status: 500 }
       );
     }

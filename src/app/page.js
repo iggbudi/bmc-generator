@@ -94,7 +94,10 @@ export default function Home() {
       const result = await response.json().catch(() => null);
 
        if (!response.ok || !result) {
-         throw new Error(result?.error || (language === 'id' ? 'Gagal menghasilkan Business Model Canvas.' : 'Failed to generate Business Model Canvas.'));
+         const detail = result?.detail ? ` (${String(result.detail).slice(0, 200)})` : '';
+         throw new Error(
+           (result?.error || (language === 'id' ? 'Gagal menghasilkan Business Model Canvas.' : 'Failed to generate Business Model Canvas.')) + detail
+         );
        }
 
       setBmcData({
