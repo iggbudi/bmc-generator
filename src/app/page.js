@@ -22,10 +22,10 @@ const initialState = {
 
 // Fallback list jika API models gagal dipanggil
 const FALLBACK_FREE_MODELS = [
-  { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free' },
-  { id: 'minimax-m2.5-free', name: 'MiniMax M2.5 Free' },
-  { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super Free' },
-  { id: 'big-pickle', name: 'Big Pickle (Free)' },
+  { id: 'deepseek-v4-flash-free', name: 'DeepSeek V4 Flash Free', isFree: true },
+  { id: 'minimax-m2.5-free', name: 'MiniMax M2.5 Free', isFree: true },
+  { id: 'nemotron-3-super-free', name: 'Nemotron 3 Super Free', isFree: true },
+  { id: 'big-pickle', name: 'Big Pickle (Free)', isFree: true },
 ];
 
 export default function Home() {
@@ -39,16 +39,19 @@ export default function Home() {
   const [freeModels, setFreeModels] = useState(FALLBACK_FREE_MODELS);
   const [selectedModel, setSelectedModel] = useState(FALLBACK_FREE_MODELS[0].id);
   const [modelsLoading, setModelsLoading] = useState(true);
+  const [showAllModels, setShowAllModels] = useState(false);
   const bmcContainerRef = useRef(null);
 
   const t = (key) => getTranslation(language, key);
 
-  // Fetch daftar model free dari OpenCode Zen saat halaman pertama kali dimuat
+  // Fetch daftar model dari OpenCode Zen saat halaman pertama kali dimuat
+  // atau saat toggle showAllModels berubah
   useEffect(() => {
     const fetchModels = async () => {
       setModelsLoading(true);
       try {
-        const res = await fetch('/api/models');
+        const filter = showAllModels ? 'all' : 'free';
+        const res = await fetch(`/api/models?filter=${filter}`);
         if (res.ok) {
           const data = await res.json();
           if (data.models && data.models.length > 0) {
@@ -59,9 +62,13 @@ export default function Home() {
                 .split('-')
                 .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
                 .join(' '),
+              isFree: m.id.toLowerCase().includes('free') || m.id === 'big-pickle',
             }));
             setFreeModels(formatted);
-            setSelectedModel(formatted[0].id);
+            // Pastikan model terpilih masih ada di list, kalau tidak pilih yang pertama
+            if (!formatted.find((m) => m.id === selectedModel)) {
+              setSelectedModel(formatted[0].id);
+            }
           }
         }
       } catch {
@@ -71,7 +78,8 @@ export default function Home() {
       }
     };
     fetchModels();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showAllModels]);
 
   const generateBMC = async () => {
     if (!businessIdea.trim()) {
@@ -462,17 +470,28 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
 
             {/* Model Selector */}
             <div className="mt-6">
-              <label className="block text-sm font-semibold text-[#5c0b0b] mb-2 flex items-center gap-2">
-                <Cpu className="w-4 h-4" />
-                {language === 'id' ? 'Pilih Model AI (Gratis)' : 'Select AI Model (Free)'}
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-[#5c0b0b] flex items-center gap-2">
+                  <Cpu className="w-4 h-4" />
+                  {language === 'id' ? 'Pilih Model AI' : 'Select AI Model'}
+                </label>
+                <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={showAllModels}
+                    onChange={(e) => setShowAllModels(e.target.checked)}
+                    className="w-4 h-4 accent-[#7a1515]"
+                  />
+                  {language === 'id' ? 'Tampilkan semua model (berbayar)' : 'Show all models (paid)'}
+                </label>
+              </div>
               {modelsLoading ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500 py-2">
                   <Loader2 className="w-4 h-4 animate-spin" />
                   {language === 'id' ? 'Memuat daftar model...' : 'Loading models...'}
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
                   {freeModels.map((model) => (
                     <button
                       key={model.id}
@@ -493,8 +512,16 @@ ${bmcData.revenueStreams.map((item, i) => `${i + 1}. ${item}`).join('\n')}`;
                         />
                         {model.name}
                       </span>
-                      <span className="text-xs text-green-600 font-semibold mt-1 block ml-4">
-                        ✓ Free
+                      <span
+                        className={`text-xs font-semibold mt-1 block ml-4 ${
+                          model.isFree ? 'text-green-600' : 'text-amber-600'
+                        }`}
+                      >
+                        {model.isFree
+                          ? '✓ Free'
+                          : language === 'id'
+                          ? '$ Berbayar'
+                          : '$ Paid'}
                       </span>
                     </button>
                   ))}

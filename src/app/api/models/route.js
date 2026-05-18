@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 const ZEN_MODELS_URL = 'https://opencode.ai/zen/v1/models';
 
-export async function GET() {
+export async function GET(request) {
   const zenApiKey = process.env.OPENCODE_ZEN_API_KEY;
 
   if (!zenApiKey) {
@@ -12,12 +12,13 @@ export async function GET() {
     );
   }
 
+  // ?filter=free → hanya model gratis, ?filter=all → semua model
+  const url = new URL(request.url);
+  const filter = url.searchParams.get('filter') || 'free';
+
   try {
     const response = await fetch(ZEN_MODELS_URL, {
-      headers: {
-        Authorization: `Bearer ${zenApiKey}`,
-      },
-      // Cache selama 5 menit agar tidak terlalu sering hit API
+      headers: { Authorization: `Bearer ${zenApiKey}` },
       next: { revalidate: 300 },
     });
 
@@ -30,14 +31,16 @@ export async function GET() {
     }
 
     const data = await response.json();
-
-    // Filter hanya model yang mengandung kata "free" (case-insensitive)
     const allModels = data?.data ?? [];
-    const freeModels = allModels.filter((m) =>
-      m.id?.toLowerCase().includes('free')
-    );
 
-    return NextResponse.json({ models: freeModels });
+    // Filter model yang Gemini-nya disembunyikan karena belum didukung
+    let models = allModels.filter((m) => !m.id?.startsWith('gemini-'));
+
+    if (filter === 'free') {
+      models = models.filter((m) => m.id?.toLowerCase().includes('free'));
+    }
+
+    return NextResponse.json({ models });
   } catch (err) {
     return NextResponse.json(
       { error: 'Terjadi kesalahan internal.', detail: err.message },
